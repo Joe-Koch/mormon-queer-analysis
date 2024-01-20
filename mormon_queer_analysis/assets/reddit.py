@@ -109,7 +109,6 @@ def cleaned_reddit_comments(
     raw_reddit_comments: pd.DataFrame,
     cleaned_reddit_posts: pd.DataFrame,
 ) -> pd.DataFrame:
-    
     # Filter comments based on if contains related keywords, or was commented on a post with related keywords
     related_post_ids = set(cleaned_reddit_posts["name"].unique())
     related_post_filter = raw_reddit_comments["link_id"].apply(
@@ -136,4 +135,3 @@ def cleaned_reddit_comments(
     )
 
     return cleaned_comments_df
-

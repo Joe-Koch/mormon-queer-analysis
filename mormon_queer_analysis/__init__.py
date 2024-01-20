@@ -12,7 +12,7 @@ from .assets import reddit, open_ai
 
 reddit_assets = load_assets_from_modules([reddit], group_name="Reddit")
 open_ai_assets = load_assets_from_modules([open_ai], group_name="OpenAI")
-all_assets = [*reddit_assets,*open_ai_assets]
+all_assets = [*reddit_assets, *open_ai_assets]
 
 reddit_data_job = define_asset_job(
     "reddit_data_pull_job", selection=AssetSelection.groups("Reddit")
