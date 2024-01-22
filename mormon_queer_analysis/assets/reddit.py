@@ -3,20 +3,14 @@ from dateutil.relativedelta import relativedelta
 from typing import Literal
 
 from dagster import (
-    asset,
     AssetExecutionContext,
     MetadataValue,
-    MonthlyPartitionsDefinition,
+    asset,
 )
 import pandas as pd
 import requests
 
-
-monthly_partitions_def = MonthlyPartitionsDefinition(
-    start_date="2023-01-01",
-    end_date="2023-03-01"
-    # start_date="2005-06-01", end_date="2023-03-01"
-)
+from mormon_queer_analysis.partitions import monthly_partitions
 
 
 def raw_reddit_data(
@@ -43,7 +37,7 @@ def raw_reddit_data(
     return df
 
 
-@asset(partitions_def=monthly_partitions_def)
+@asset(partitions_def=monthly_partitions)
 def raw_reddit_posts(context: AssetExecutionContext) -> pd.DataFrame:
     df = raw_reddit_data(context, reddit_data_type="posts")
 
@@ -57,7 +51,7 @@ def raw_reddit_posts(context: AssetExecutionContext) -> pd.DataFrame:
     return df
 
 
-@asset(partitions_def=monthly_partitions_def)
+@asset(partitions_def=monthly_partitions)
 def raw_reddit_comments(context: AssetExecutionContext) -> pd.DataFrame:
     df = raw_reddit_data(context, reddit_data_type="comments")
 
@@ -71,8 +65,8 @@ def raw_reddit_comments(context: AssetExecutionContext) -> pd.DataFrame:
     return df
 
 
-@asset(partitions_def=monthly_partitions_def)
-def cleaned_reddit_posts(
+@asset(partitions_def=monthly_partitions)
+def topical_reddit_posts(
     context: AssetExecutionContext,
     raw_reddit_posts: pd.DataFrame,
 ) -> pd.DataFrame:
@@ -82,56 +76,58 @@ def cleaned_reddit_posts(
     )
 
     # Filter posts based on keywords
-    with open("../resources/filter_keywords.txt", "r") as file:
-        filter_keywords = [line.strip() for line in file.readlines() if line.strip()]
+    # with open("../resources/filter_keywords.txt", "r") as file:
+    #     filter_keywords = [line.strip() for line in file.readlines() if line.strip()]
+    filter_keywords = ("BYU", "General Conference")
     keyword_filter = raw_reddit_posts["text"].apply(
-        lambda x: any(keyword in x for keyword in filter_keywords)
+        lambda x: any(keyword.lower() in x.lower() for keyword in filter_keywords)
     )
     filtered_df = raw_reddit_posts[keyword_filter]
 
-    # Keep only relevant columns, and rename them
-    cleaned_posts_df = filtered_df[["created_utc", "score", "name", "text"]].copy()
-    cleaned_posts_df.rename(columns={"created_utc": "date"}, inplace=True)
+    # Keep only necessary columns, and rename them to be less reddit-specific
+    filtered_df = filtered_df[["created_utc", "score", "name", "text"]].copy()
+    filtered_df.rename(columns={"created_utc": "date"}, inplace=True)
 
     context.add_output_metadata(
         metadata={
-            "num_records": len(cleaned_posts_df),
-            "preview": MetadataValue.md(cleaned_posts_df.head().to_markdown()),
+            "num_records": len(filtered_df),
+            "preview": MetadataValue.md(filtered_df.head().to_markdown()),
         }
     )
 
-    return cleaned_posts_df
+    return filtered_df
 
 
-@asset(partitions_def=monthly_partitions_def)
-def cleaned_reddit_comments(
+@asset(partitions_def=monthly_partitions)
+def topical_reddit_comments(
     context: AssetExecutionContext,
     raw_reddit_comments: pd.DataFrame,
-    cleaned_reddit_posts: pd.DataFrame,
+    topical_reddit_posts: pd.DataFrame,
 ) -> pd.DataFrame:
-    # Filter comments based on if contains related keywords, or was commented on a post with related keywords
-    related_post_ids = set(cleaned_reddit_posts["name"].unique())
+    # Filter comments based on if they contain related keywords, or they were commented on a post with related keywords
+    related_post_ids = set(topical_reddit_posts["name"].unique())
     related_post_filter = raw_reddit_comments["link_id"].apply(
         lambda x: x in related_post_ids
     )
-    with open("../resources/filter_keywords.txt", "r") as file:
-        filter_keywords = [line.strip() for line in file.readlines() if line.strip()]
-    keyword_filter = raw_reddit_comments["text"].apply(
-        lambda x: any(keyword in x for keyword in filter_keywords)
+    # with open("../resources/filter_keywords.txt", "r") as file:
+    #     filter_keywords = [line.strip() for line in file.readlines() if line.strip()]
+    filter_keywords = ("BYU", "General Conference")
+    keyword_filter = raw_reddit_comments["body"].apply(
+        lambda x: any(keyword.lower() in x.lower() for keyword in filter_keywords)
     )
-    filtered_df = raw_reddit_comments[related_post_filter | keyword_filter]
+    filtered_comments_df = raw_reddit_comments[related_post_filter | keyword_filter]
 
-    # Keep only relevant columns, and rename them
-    cleaned_comments_df = filtered_df[["created_utc", "score", "body"]].copy()
-    cleaned_comments_df.rename(
+    # Keep only necessary columns, and rename them to be less reddit-specific
+    filtered_comments_df = filtered_comments_df[["created_utc", "score", "body"]].copy()
+    filtered_comments_df.rename(
         columns={"created_utc": "date", "body": "text"}, inplace=True
     )
 
     context.add_output_metadata(
         metadata={
-            "num_records": len(cleaned_comments_df),
-            "preview": MetadataValue.md(cleaned_comments_df.head().to_markdown()),
+            "num_records": len(filtered_comments_df),
+            "preview": MetadataValue.md(filtered_comments_df.head().to_markdown()),
         }
     )
 
-    return cleaned_comments_df
+    return filtered_comments_df
