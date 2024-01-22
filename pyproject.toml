@@ -1,6 +1,32 @@
-[build-system]
-requires = ["setuptools"]
-build-backend = "setuptools.build_meta"
-
 [tool.dagster]
 module_name = "mormon_queer_analysis"
+
+[tool.poetry]
+name = "mormon-queer-analysis"
+version = "0.1.0"
+description = "Analysis of LDS reddit discourse on homosexuality over the last few decades"
+authors = ["Joe Koch <kochzoe@gmail.com>"]
+license = "Apache 2.0 License"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.9,<3.13"
+dagster = "^1.6.1"
+dagster-cloud = "^1.6.1"
+matplotlib = "*"
+openai = "^1.9.0"
+pandas = "*"
+plotly = "*"
+requests = "*"
+scikit-learn = "^1.4.0"
+tenacity = "*"
+tiktoken = "^0.5.2"
+
+[tool.poetry.group.dev.dependencies]
+black = "*"
+dagster-webserver = "^1.6.1"
+pytest = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
