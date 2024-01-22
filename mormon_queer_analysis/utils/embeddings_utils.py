@@ -1,4 +1,4 @@
-"""This file has been copied whole cloth from OpenAI's embeddings cookbook.
+"""This file has been copied (with very minimal editing) from OpenAI's embeddings cookbook.
 
 OpenAI. (2024). embeddings_utils.py in openai-cookbook. GitHub repository, MIT License. Accessed on January 20, 2024, from 
 https://github.com/openai/openai-cookbook/blob/d891437737cf990a84fc7ac8516d615d7b65540b/examples/utils/embeddings_utils.py
@@ -22,7 +22,10 @@ import pandas as pd
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(6))
 def get_embedding(
-    text: str, model="text-similarity-davinci-001", **kwargs
+    openai: openai,
+    text: str,
+    model="text-similarity-davinci-001",
+    **kwargs,
 ) -> List[float]:
     # replace newlines, which can negatively affect performance.
     text = text.replace("\n", " ")
@@ -34,7 +37,10 @@ def get_embedding(
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(6))
 async def aget_embedding(
-    text: str, model="text-similarity-davinci-001", **kwargs
+    openai: openai,
+    text: str,
+    model="text-similarity-davinci-001",
+    **kwargs,
 ) -> List[float]:
     # replace newlines, which can negatively affect performance.
     text = text.replace("\n", " ")
@@ -46,7 +52,10 @@ async def aget_embedding(
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(6))
 def get_embeddings(
-    list_of_text: List[str], model="text-similarity-babbage-001", **kwargs
+    openai: openai,
+    list_of_text: List[str],
+    model="text-similarity-babbage-001",
+    **kwargs,
 ) -> List[List[float]]:
     assert len(list_of_text) <= 2048, "The batch size should not be larger than 2048."
 
@@ -59,7 +68,10 @@ def get_embeddings(
 
 @retry(wait=wait_random_exponential(min=1, max=20), stop=stop_after_attempt(6))
 async def aget_embeddings(
-    list_of_text: List[str], model="text-similarity-babbage-001", **kwargs
+    openai: openai,
+    list_of_text: List[str],
+    model="text-similarity-babbage-001",
+    **kwargs,
 ) -> List[List[float]]:
     assert len(list_of_text) <= 2048, "The batch size should not be larger than 2048."
 

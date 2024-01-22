@@ -11,13 +11,13 @@ from dagster import (
 )
 import matplotlib.pyplot as plt
 import numpy as np
-import openai
 import pandas as pd
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 import tiktoken
 
 from mormon_queer_analysis.partitions import monthly_partitions
+from mormon_queer_analysis.resources.open_client import OpenAIClientResource
 from mormon_queer_analysis.utils.embeddings_utils import get_embedding
 
 
@@ -26,6 +26,7 @@ def open_ai_embeddings(
     context: AssetExecutionContext,
     topical_reddit_posts: pd.DataFrame,
     topical_reddit_comments: pd.DataFrame,
+    open_ai_client: OpenAIClientResource,
 ) -> pd.DataFrame:
     df = pd.concat([topical_reddit_posts, topical_reddit_comments], ignore_index=True)
 
@@ -43,7 +44,10 @@ def open_ai_embeddings(
     rows_dropped = initial_row_count - final_row_count
 
     # OpenAI docs say this may take a few minutes
-    df["embedding"] = df.text.apply(lambda x: get_embedding(x, model=embedding_model))
+    openai = open_ai_client.get_client()
+    df["embedding"] = df.text.apply(
+        lambda x: get_embedding(openai, x, model=embedding_model)
+    )
 
     context.add_output_metadata(
         metadata={
@@ -112,8 +116,12 @@ def k_means_clustering(open_ai_embeddings: Dict):
     return df
 
 
-@asset
-def cluster_summaries(context: AssetExecutionContext, k_means_clustering: pd.DataFrame):
+@asset()
+def cluster_summaries(
+    context: AssetExecutionContext,
+    k_means_clustering: pd.DataFrame,
+    open_ai_client: OpenAIClientResource,
+):
     df = k_means_clustering
     n_clusters = 4
 
@@ -133,6 +141,7 @@ def cluster_summaries(context: AssetExecutionContext, k_means_clustering: pd.Dat
             .values
         )
         # Get a summary of each cluster from openAI
+        openai = open_ai_client.get_client()
         response = openai.completions.create(
             model="gpt-3.5-turbo-instruct",
             prompt=f'What do the following reddit posts and comments have in common?\n\nReddit posts and comments:\n"""\n{texts}\n"""\n\nTheme:',

@@ -11,6 +11,7 @@ import pandas as pd
 import requests
 
 from mormon_queer_analysis.partitions import monthly_partitions
+from mormon_queer_analysis.resources import FILTER_KEYWORDS
 
 
 def raw_reddit_data(
@@ -76,11 +77,8 @@ def topical_reddit_posts(
     )
 
     # Filter posts based on keywords
-    # with open("../resources/filter_keywords.txt", "r") as file:
-    #     filter_keywords = [line.strip() for line in file.readlines() if line.strip()]
-    filter_keywords = ("BYU", "General Conference")
     keyword_filter = raw_reddit_posts["text"].apply(
-        lambda x: any(keyword.lower() in x.lower() for keyword in filter_keywords)
+        lambda x: any(keyword.lower() in x.lower() for keyword in FILTER_KEYWORDS)
     )
     filtered_df = raw_reddit_posts[keyword_filter]
 
@@ -109,11 +107,8 @@ def topical_reddit_comments(
     related_post_filter = raw_reddit_comments["link_id"].apply(
         lambda x: x in related_post_ids
     )
-    # with open("../resources/filter_keywords.txt", "r") as file:
-    #     filter_keywords = [line.strip() for line in file.readlines() if line.strip()]
-    filter_keywords = ("BYU", "General Conference")
     keyword_filter = raw_reddit_comments["body"].apply(
-        lambda x: any(keyword.lower() in x.lower() for keyword in filter_keywords)
+        lambda x: any(keyword.lower() in x.lower() for keyword in FILTER_KEYWORDS)
     )
     filtered_comments_df = raw_reddit_comments[related_post_filter | keyword_filter]
 
