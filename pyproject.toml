@@ -13,6 +13,7 @@ readme = "README.md"
 python = ">=3.9,<3.13"
 dagster = "^1.6.1"
 dagster-cloud = "^1.6.1"
+dagster-webserver = "^1.6.1"
 matplotlib = "*"
 openai = "^1.9.0"
 pandas = "*"
@@ -24,7 +25,6 @@ tiktoken = "^0.5.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
-dagster-webserver = "^1.6.1"
 pytest = "*"
 
 [build-system]
