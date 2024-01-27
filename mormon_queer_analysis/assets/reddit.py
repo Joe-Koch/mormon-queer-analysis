@@ -17,6 +17,18 @@ from mormon_queer_analysis.resources import FILTER_KEYWORDS
 def raw_reddit_data(
     context: AssetExecutionContext, reddit_data_type: Literal["comments", "posts"]
 ) -> pd.DataFrame:
+    """
+    Fetches raw data from the arctic shift reddit data dump API for a
+    specified type of Reddit content (either comments or posts) in the
+    specified subreddit. The data fetched is based on a specific
+    partition date provided by the Dagster context to filter the data to
+    only include content from that month.
+
+    Raises:
+    - HTTPError: If the request to the arctic shift API fails.
+    - JSONDecodeError: If the response from the API is not valid JSON.
+    """
+
     base_url = f"https://arctic-shift.photon-reddit.com/api/{reddit_data_type}/search"
     partition_date_str = context.asset_partition_key_for_output()
 
@@ -40,6 +52,10 @@ def raw_reddit_data(
 
 @asset(partitions_def=monthly_partitions)
 def raw_reddit_posts(context: AssetExecutionContext) -> pd.DataFrame:
+    """
+    Retrieves raw Reddit posts from the arctic shift API.
+    """
+
     df = raw_reddit_data(context, reddit_data_type="posts")
 
     context.add_output_metadata(
@@ -54,6 +70,10 @@ def raw_reddit_posts(context: AssetExecutionContext) -> pd.DataFrame:
 
 @asset(partitions_def=monthly_partitions)
 def raw_reddit_comments(context: AssetExecutionContext) -> pd.DataFrame:
+    """
+    Retrieves raw Reddit comments from the arctic shift API.
+    """
+
     df = raw_reddit_data(context, reddit_data_type="comments")
 
     context.add_output_metadata(
@@ -71,6 +91,16 @@ def topical_reddit_posts(
     context: AssetExecutionContext,
     raw_reddit_posts: pd.DataFrame,
 ) -> pd.DataFrame:
+    """
+    Filters reddit posts to ones related to the topic, based on if they
+    contain relevant keywords. Formats data to keep only necessary
+    columns, and renames them to be less reddit-specific.
+    """
+
+    # If there was no upstream content, return an empty dataframe
+    if raw_reddit_posts.empty:
+        return pd.DataFrame()
+
     # Concatenate the post's title and body into a new column 'text'
     raw_reddit_posts["text"] = (
         raw_reddit_posts["title"] + "\n" + raw_reddit_posts["selftext"]
@@ -88,7 +118,9 @@ def topical_reddit_posts(
 
     context.add_output_metadata(
         metadata={
-            "num_records": len(filtered_df),
+            "num_records": len(
+                filtered_df
+            ),  # TODO: Add an EventMetadataEntry when num_records is 0 to warn if the dataframe was empty
             "preview": MetadataValue.md(filtered_df.head().to_markdown()),
         }
     )
@@ -102,6 +134,17 @@ def topical_reddit_comments(
     raw_reddit_comments: pd.DataFrame,
     topical_reddit_posts: pd.DataFrame,
 ) -> pd.DataFrame:
+    """
+    Filters reddit comments to ones related to the topic, based on if
+    they contain relevant keywords or were commented on relevant posts.
+    Formats data to keep only necessary columns, and renames them to be
+    less reddit-specific.
+    """
+
+    # If there was no upstream content, return an empty dataframe
+    if raw_reddit_comments.empty:
+        return pd.DataFrame()
+
     # Filter comments based on if they contain related keywords, or they were commented on a post with related keywords
     related_post_ids = set(topical_reddit_posts["name"].unique())
     related_post_filter = raw_reddit_comments["link_id"].apply(
