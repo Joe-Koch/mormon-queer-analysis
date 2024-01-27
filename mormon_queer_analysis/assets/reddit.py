@@ -10,7 +10,7 @@ from dagster import (
 import pandas as pd
 import requests
 
-from mormon_queer_analysis.partitions import monthly_partitions
+from mormon_queer_analysis.partitions import reddit_partitions
 from mormon_queer_analysis.resources import FILTER_KEYWORDS
 
 
@@ -30,10 +30,11 @@ def raw_reddit_data(
     """
 
     base_url = f"https://arctic-shift.photon-reddit.com/api/{reddit_data_type}/search"
-    partition_date_str = context.asset_partition_key_for_output()
+    partition_date_str = context.partition_key.keys_by_dimension["date"]
+    partition_subreddit = context.partition_key.keys_by_dimension["subreddit"]
 
     filters = {
-        "subreddit": "mormon",
+        "subreddit": partition_subreddit,
         "after": partition_date_str,
         "before": (
             datetime.strptime(partition_date_str, "%Y-%m-%d") + relativedelta(months=1)
@@ -50,7 +51,7 @@ def raw_reddit_data(
     return df
 
 
-@asset(partitions_def=monthly_partitions)
+@asset(partitions_def=reddit_partitions)
 def raw_reddit_posts(context: AssetExecutionContext) -> pd.DataFrame:
     """
     Retrieves raw Reddit posts from the arctic shift API.
@@ -68,7 +69,7 @@ def raw_reddit_posts(context: AssetExecutionContext) -> pd.DataFrame:
     return df
 
 
-@asset(partitions_def=monthly_partitions)
+@asset(partitions_def=reddit_partitions)
 def raw_reddit_comments(context: AssetExecutionContext) -> pd.DataFrame:
     """
     Retrieves raw Reddit comments from the arctic shift API.
@@ -86,7 +87,7 @@ def raw_reddit_comments(context: AssetExecutionContext) -> pd.DataFrame:
     return df
 
 
-@asset(partitions_def=monthly_partitions)
+@asset(partitions_def=reddit_partitions)
 def topical_reddit_posts(
     context: AssetExecutionContext,
     raw_reddit_posts: pd.DataFrame,
@@ -128,7 +129,7 @@ def topical_reddit_posts(
     return filtered_df
 
 
-@asset(partitions_def=monthly_partitions)
+@asset(partitions_def=reddit_partitions)
 def topical_reddit_comments(
     context: AssetExecutionContext,
     raw_reddit_comments: pd.DataFrame,

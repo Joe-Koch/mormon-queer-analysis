@@ -17,7 +17,7 @@ from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 import tiktoken
 
-from mormon_queer_analysis.partitions import monthly_partitions
+from mormon_queer_analysis.partitions import reddit_partitions
 from mormon_queer_analysis.resources.open_client import OpenAIClientResource
 from mormon_queer_analysis.utils.embeddings_utils import get_embedding
 
@@ -26,7 +26,7 @@ class ClusterConfig(Config):
     n_clusters: int = Field(default=60, description="Number of clusters")
 
 
-@asset(partitions_def=monthly_partitions)
+@asset(partitions_def=reddit_partitions)
 def open_ai_embeddings(
     context: AssetExecutionContext,
     topical_reddit_posts: pd.DataFrame,
