@@ -62,9 +62,9 @@ def open_ai_embeddings(
     rows_dropped = initial_row_count - final_row_count
 
     # OpenAI docs say this may take a few minutes
-    openai = open_ai_client.get_client()
+    client = open_ai_client.get_client()
     df["embedding"] = df.text.apply(
-        lambda x: get_embedding(openai, x, model=embedding_model)
+        lambda x: get_embedding(client, x, model=embedding_model)
     )
 
     context.add_output_metadata(
@@ -122,15 +122,11 @@ def k_means_clustering(
 def cluster_visualization(
     config: ClusterConfig,
     k_means_clustering: pd.DataFrame,
-    open_ai_client: OpenAIClientResource,
 ) -> MaterializeResult:
     """
     Visualizes the clustering results obtained from K-means clustering of OpenAI embeddings.
     This asset performs two main visualizations: a t-SNE plot to represent clusters in a
     2D space and a time series plot showing the frequency of observations per cluster over time.
-
-    Also uses OpenAI to generate summaries for each cluster, and samples and displays texts from each
-    cluster.
     """
 
     # CLUSTER VISUALIZATION
@@ -203,50 +199,56 @@ def cluster_visualization(
     # Convert the image to Markdown to preview it within Dagster
     md_content = f"![img](data:image/png;base64,{image_data.decode()})"
 
-    # CLUSTER SUMMARIES AND SAMPLES
-    # Reading a text sample which belongs to each group.
-    sample_per_cluster = 10
-
-    summaries = ""
-    sample_texts = ""
-
-    for i in range(n_clusters):
-        cluster_df = df[df.cluster == i]
-        n_samples = min(10, cluster_df.shape[0])
-        sample_cluster_rows = cluster_df.sample(n_samples, random_state=42)
-
-        # Make openAI summaries of each cluster
-        summaries += f"Cluster {i} Theme: "
-
-        texts = "\n".join(sample_cluster_rows.text.values)
-
-        # TODO: switch model to gpt-4
-        # Get a summary of each cluster from openAI
-        client = open_ai_client.get_client()
-        response = client.completions.create(
-            model="gpt-3-turbo-instruct",
-            role="system",
-            prompt=f'What do the following reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+? On theme, argumentation style, tone, etc.?\n\nReddit posts and comments:\n"""\n{texts}\n"""',
-            temperature=0,
-            max_tokens=100,
-            frequency_penalty=0,
-        )
-
-        summaries += response.choices[0].text.replace("\n", "") + "\n"
-
-        # Display some sample texts from each cluster
-        sample_texts += f"Cluster {i} Texts: "
-
-        for j in range(n_samples):
-            sample_texts += f"{sample_cluster_rows.score.values[j]}, "
-            sample_texts += f"{sample_cluster_rows.date.values[j]}:   "
-            sample_texts += f"{sample_cluster_rows.text.str[:300].values[j]}\n"
-
     # Attach the Markdown content as metadata to the asset
     return MaterializeResult(
         metadata={
             "plot": MetadataValue.md(md_content),
+        }
+    )
+
+
+@asset
+def cluster_summaries(
+    config: ClusterConfig,
+    k_means_clustering: pd.DataFrame,
+    open_ai_client: OpenAIClientResource,
+) -> MaterializeResult:
+    """
+    OpenAI generated summaries for each cluster, and samples texts from each cluster.
+    """
+
+    # CLUSTER SUMMARIES AND SAMPLES
+    df = k_means_clustering
+    n_clusters = config.n_clusters
+    sample_per_cluster = 10
+
+    summaries = ""
+    cluster_texts = ""
+    client = open_ai_client.get_client()
+    prompt = "What do the following reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+? On theme, argumentation style, tone, etc.?\n\nReddit posts and comments:\n"
+
+    for i in range(n_clusters):
+        cluster_df = df[df.cluster == i]
+        n_samples = min(sample_per_cluster, cluster_df.shape[0])
+        sample_cluster_rows = cluster_df.sample(n_samples, random_state=42)
+        texts = "\n".join(sample_cluster_rows.text.values)
+
+        # Add the texts for previewing a sample from each cluster
+        cluster_texts += f"Cluster {i} Samples: \n{texts}\n"
+
+        # Get a summary of each cluster from openAI
+        messages = [{"role": "system", "content": prompt + texts}]
+        response = client.chat.completions.create(
+            model="gpt-4",
+            messages=messages,
+        )
+        content = response.choices[0].message.content
+        summaries += f"Cluster {i} Summary: \n{content}\n\n"
+
+    # Attach the Markdown content as metadata to the asset
+    return MaterializeResult(
+        metadata={
             "summaries": MetadataValue.md(summaries),
-            "samples": MetadataValue.md(sample_texts),
+            "samples": MetadataValue.md(cluster_texts),
         }
     )
