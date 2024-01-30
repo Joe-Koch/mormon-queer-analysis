@@ -2,6 +2,7 @@ import base64
 from io import BytesIO
 from typing import Dict
 
+import backoff
 from dagster import (
     AssetExecutionContext,
     Config,
@@ -11,6 +12,7 @@ from dagster import (
 )
 import matplotlib.pyplot as plt
 import numpy as np
+from openai import RateLimitError
 import pandas as pd
 from pydantic import Field
 from sklearn.cluster import KMeans
@@ -207,6 +209,16 @@ def cluster_visualization(
     )
 
 
+@backoff.on_exception(backoff.expo, RateLimitError)
+def completions_with_backoff(client, messages):
+    """Use OpenAI's chat completions API, but back off if it gets a rate limit error"""
+    response = client.chat.completions.create(
+        model="gpt-4",
+        messages=messages,
+    )
+    return response
+
+
 @asset
 def cluster_summaries(
     config: ClusterConfig,
@@ -220,7 +232,7 @@ def cluster_summaries(
     # CLUSTER SUMMARIES AND SAMPLES
     df = k_means_clustering
     n_clusters = config.n_clusters
-    sample_per_cluster = 10
+    sample_per_cluster = 8
 
     summaries = ""
     cluster_texts = ""
@@ -234,14 +246,11 @@ def cluster_summaries(
         texts = "\n".join(sample_cluster_rows.text.values)
 
         # Add the texts for previewing a sample from each cluster
-        cluster_texts += f"Cluster {i} Samples: \n{texts}\n"
+        cluster_texts += f"\n\nCluster {i} Samples: \n{texts}\n\n"
 
         # Get a summary of each cluster from openAI
         messages = [{"role": "system", "content": prompt + texts}]
-        response = client.chat.completions.create(
-            model="gpt-4",
-            messages=messages,
-        )
+        response = completions_with_backoff(client, messages)
         content = response.choices[0].message.content
         summaries += f"Cluster {i} Summary: \n{content}\n\n"
 

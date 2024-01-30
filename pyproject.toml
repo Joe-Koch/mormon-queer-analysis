@@ -22,6 +22,7 @@ requests = "*"
 scikit-learn = "^1.4.0"
 tenacity = "*"
 tiktoken = "^0.5.2"
+backoff = "^2.2.1"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"
