@@ -206,7 +206,7 @@ def cluster_visualization(
 def completions_with_backoff(client, messages):
     """Use OpenAI's chat completions API, but back off if it gets a rate limit error"""
     response = client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-3.5-turbo-1106",
         messages=messages,
     )
     return response
