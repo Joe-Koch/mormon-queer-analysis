@@ -143,9 +143,7 @@ def cluster_visualization(
         n_components=2, perplexity=15, random_state=42, init="random", learning_rate=200
     )
     vis_dims2 = tsne.fit_transform(matrix)
-
-    x = [x for x, y in vis_dims2]
-    y = [y for x, y in vis_dims2]
+    x, y = zip(*vis_dims2)
 
     # Create a colormap
     colors = plt.cm.rainbow(np.linspace(0, 1, n_clusters))
@@ -165,25 +163,20 @@ def cluster_visualization(
     plt.title("Clusters identified visualized in language 2d using t-SNE")
 
     # Plotting the time series
+
+    selected_clusters = {1: "Deleted Posts", 2: "Angry Responses", 5: "Another Label"}
+
     plt.subplot(1, 2, 2)
-    for category, color in enumerate(colors):
+    for category, label in selected_clusters.items():
         cluster_data = df[df.cluster == category]
         # Convert 'date' column to datetime
-        cluster_data["date"] = pd.to_datetime(cluster_data["date"])
+        # Convert Reddit's Unix timestamp to datetime format.
+        cluster_data["date"] = pd.to_datetime(cluster_data["date"], unit="s")
         # Set 'date' as the index
         cluster_data.set_index("date", inplace=True)
         # Resample and count observations per month
-        monthly_data = cluster_data.resample("M").size()
-        monthly_data.plot(
-            kind="line", color=color, alpha=0.7, label=f"Cluster {category}"
-        )
-
-    plt.legend(title="Cluster", bbox_to_anchor=(1.05, 1), loc="upper left")
-
-    # Adjusting the y-axis limits if needed
-    plt.ylim(
-        ymin=0
-    )  # Set the bottom of the y-axis to 0, or choose an appropriate lower bound
+        yearly_data = cluster_data.resample("Y").size()
+        yearly_data.plot(kind="line", alpha=0.7, label=label)
 
     plt.title("Frequency of Observations per Cluster Over Time")
     plt.xlabel("Date")
