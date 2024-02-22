@@ -24,6 +24,8 @@ tenacity = "*"
 tiktoken = "^0.5.2"
 backoff = "^2.2.1"
 notebook = "^7.1.0"
+dagster-duckdb = "^0.22.5"
+dagster-duckdb-pandas = "^0.22.5"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"

@@ -164,5 +164,9 @@ cython_debug/
 dagster_home
 data
 
+# DuckDB database
+database/dagster.DuckDB
+dagster.duckdb.wal
+
 # Scraps
 scraps

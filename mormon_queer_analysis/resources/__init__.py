@@ -1,6 +1,10 @@
 from dagster import EnvVar, FilesystemIOManager, resource
 
 from mormon_queer_analysis.partitions import reddit_partitions_def
+from mormon_queer_analysis.resources.duckdb_io_manager import (
+    Database,
+    database_io_manager,
+)
 from mormon_queer_analysis.resources.open_client import OpenAIClientResource
 
 
@@ -31,9 +35,8 @@ RESOURCES_LOCAL = {
 
 
 RESOURCES_PRODUCTION = {
-    "io_manager": FilesystemIOManager(
-        base_dir="data",  # Path is built relative to where `dagster dev` is run
-    ),
+    "io_manager": database_io_manager,
+    "database": Database(path="database/dagster.duckdb"),
     "reddit_partitions": reddit_partitions_resource.configured(
         {"start_date": "2005-06-01", "end_date": "2023-03-01"}
     ),

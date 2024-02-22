@@ -20,19 +20,24 @@ from sklearn.manifold import TSNE
 import tiktoken
 
 from mormon_queer_analysis.partitions import reddit_partitions
+from mormon_queer_analysis.resources.duckdb_io_manager import Database
 from mormon_queer_analysis.resources.open_client import OpenAIClientResource
 from mormon_queer_analysis.utils.embeddings_utils import get_embedding
 
 
 class ClusterConfig(Config):
-    n_clusters: int = Field(default=60, description="Number of clusters")
+    n_clusters: int = Field(default=32, description="Number of clusters")
 
 
-@asset(partitions_def=reddit_partitions)
+@asset(
+    partitions_def=reddit_partitions,
+    metadata={
+        "partition_expr": {"date": "TO_TIMESTAMP(date)", "subreddit": "subreddit"}
+    },
+)
 def open_ai_embeddings(
     context: AssetExecutionContext,
-    topical_reddit_posts: pd.DataFrame,
-    topical_reddit_comments: pd.DataFrame,
+    database: Database,
     open_ai_client: OpenAIClientResource,
 ) -> pd.DataFrame:
     """
@@ -41,14 +46,25 @@ def open_ai_embeddings(
     and applies the embedding model to the remaining content.
     """
 
-    df = pd.DataFrame()
-    # Combine reddit posts and comments, if they exist (some partitions didn't capture any topical content)
-    if topical_reddit_posts.any:
-        df = pd.concat([df, topical_reddit_posts], ignore_index=True)
-    if topical_reddit_comments.any:
-        df = pd.concat([df, topical_reddit_comments], ignore_index=True)
-    if df.empty:
-        return df
+    df = database.query(
+        f"""
+        SELECT
+            date,
+            score,
+            text,
+            subreddit
+        FROM
+            REDDIT.topical_reddit_posts
+        UNION ALL
+        SELECT
+            date,
+            score,
+            text,
+            subreddit
+        FROM
+            REDDIT.topical_reddit_comments
+    """
+    )
 
     # embedding model parameters
     embedding_model = "text-embedding-ada-002"
@@ -68,11 +84,10 @@ def open_ai_embeddings(
     df["embedding"] = df.text.apply(
         lambda x: get_embedding(client, x, model=embedding_model)
     )
+    df["embedding"] = df["embedding"].apply(np.array)
 
     context.add_output_metadata(
         metadata={
-            "num_records": len(df),
-            "preview": MetadataValue.md(df.head().to_markdown()),
             "rows_dropped": MetadataValue.int(rows_dropped),
         }
     )
@@ -82,7 +97,7 @@ def open_ai_embeddings(
 
 @asset
 def k_means_clustering(
-    context: AssetExecutionContext, config: ClusterConfig, open_ai_embeddings: Dict
+    config: ClusterConfig, open_ai_embeddings: pd.DataFrame
 ) -> pd.DataFrame:
     """
     Performs K-means clustering on OpenAI embeddings.
@@ -92,10 +107,8 @@ def k_means_clustering(
     of clusters in the configuration. Each row in the resultant DataFrame is labeled with its corresponding
     cluster.
     """
-    df = pd.DataFrame()
-    # Iterate over each partition's data and concatenate it to the aggregated DataFrame
-    for partition_df in open_ai_embeddings.values():
-        df = pd.concat([df, partition_df], ignore_index=True)
+
+    df = open_ai_embeddings
 
     df["embedding"] = df["embedding"].apply(np.array)
 
@@ -107,15 +120,6 @@ def k_means_clustering(
     kmeans.fit(matrix)
     labels = kmeans.labels_
     df["cluster"] = labels
-
-    df.to_json("data/k_means_clustering.json")
-
-    context.add_output_metadata(
-        metadata={
-            "num_records": len(df),
-            "preview": MetadataValue.md(df.head().to_markdown()),
-        }
-    )
 
     return df
 
@@ -164,16 +168,26 @@ def cluster_visualization(
 
     # Plotting the time series
 
-    selected_clusters = {1: "Deleted Posts", 2: "Angry Responses", 5: "Another Label"}
+    # selected_clusters = {
+    #     8: "Deleted Posts",
+    #     6: "Insults",
+    #     4: "Removed",
+    #     11: "need for acceptance",
+    #     14: "internal conflict",
+    #     34: "hopeful about progress",
+    #     37: "marriage",
+    # }
+
+    selected_clusters = {i: f"{i}" for i in range(20, 30)}
 
     plt.subplot(1, 2, 2)
     for category, label in selected_clusters.items():
         cluster_data = df[df.cluster == category]
-        # Convert 'date' column to datetime
         # Convert Reddit's Unix timestamp to datetime format.
         cluster_data["date"] = pd.to_datetime(cluster_data["date"], unit="s")
         # Set 'date' as the index
         cluster_data.set_index("date", inplace=True)
+        # cluster_data = cluster_data.loc["2010-01-01":"2022-12-31"]
         # Resample and count observations per month
         yearly_data = cluster_data.resample("Y").size()
         yearly_data.plot(kind="line", alpha=0.7, label=label)
@@ -182,9 +196,8 @@ def cluster_visualization(
     plt.xlabel("Date")
     plt.ylabel("Frequency")
 
-    plt.tight_layout(
-        rect=[0, 0, 0.85, 1]
-    )  # Adjust the rect to make space for the legend
+    plt.legend(loc="upper left", bbox_to_anchor=(1, 1))  # Place legend outside
+    plt.tight_layout(rect=[0, 0, 0.85, 1])
 
     # Convert the image to a saveable format
     buffer = BytesIO()
@@ -202,6 +215,7 @@ def cluster_visualization(
     )
 
 
+# TODO this should go into the openAI resource
 @backoff.on_exception(backoff.expo, RateLimitError)
 def completions_with_backoff(client, messages):
     """Use OpenAI's chat completions API, but back off if it gets a rate limit error"""
@@ -214,6 +228,7 @@ def completions_with_backoff(client, messages):
 
 @asset
 def cluster_summaries(
+    context: AssetExecutionContext,
     config: ClusterConfig,
     k_means_clustering: pd.DataFrame,
     open_ai_client: OpenAIClientResource,
@@ -225,7 +240,7 @@ def cluster_summaries(
     # CLUSTER SUMMARIES AND SAMPLES
     df = k_means_clustering
     n_clusters = config.n_clusters
-    sample_per_cluster = 8
+    sample_per_cluster = 10
 
     summaries = ""
     cluster_texts = ""
@@ -243,9 +258,14 @@ def cluster_summaries(
 
         # Get a summary of each cluster from openAI
         messages = [{"role": "system", "content": prompt + texts}]
+        context.log.info(f"API Hit # {i}")
         response = completions_with_backoff(client, messages)
         content = response.choices[0].message.content
         summaries += f"Cluster {i} Summary: \n{content}\n\n"
+        context.log.info(f"Cluster {i} Summary: \n{content}\n\n")
+
+    with open("data/all_summaries.txt", "w") as f:
+        f.write(summaries)
 
     # Attach the Markdown content as metadata to the asset
     return MaterializeResult(
