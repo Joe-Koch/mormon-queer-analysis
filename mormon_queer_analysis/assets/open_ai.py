@@ -110,16 +110,32 @@ def k_means_clustering(
 
     df = open_ai_embeddings
 
+    # Format embeddings
     df["embedding"] = df["embedding"].apply(np.array)
-
     matrix = np.vstack(df.embedding.values)
 
+    # Perform k-means clustering
     n_clusters = config.n_clusters
-
     kmeans = KMeans(n_clusters=n_clusters, init="k-means++", random_state=42)
     kmeans.fit(matrix)
     labels = kmeans.labels_
     df["cluster"] = labels
+
+    # Mark observations that are closest to the cluster center to serve as sample texts
+    df["is_central_member"] = False
+
+    for cluster_id in range(n_clusters):
+        cluster_df = df[df["cluster"] == cluster_id]
+        distances_to_center = np.linalg.norm(
+            matrix[cluster_df.index] - kmeans.cluster_centers_[cluster_id], axis=1
+        )
+        cluster_df = cluster_df.copy()
+        cluster_df["distance_to_center"] = distances_to_center
+        # Sort the DataFrame based on the distance
+        sorted_cluster_df = cluster_df.sort_values("distance_to_center")
+        # Select the top N texts or all texts if there are fewer than N
+        closest_texts = sorted_cluster_df.head(min(10, len(sorted_cluster_df)))
+        df.loc[closest_texts.index, "is_central_member"] = True
 
     return df
 
@@ -217,10 +233,10 @@ def cluster_visualization(
 
 # TODO this should go into the openAI resource
 @backoff.on_exception(backoff.expo, RateLimitError)
-def completions_with_backoff(client, messages):
+def completions_with_backoff(client, model, messages):
     """Use OpenAI's chat completions API, but back off if it gets a rate limit error"""
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo-1106",
+        model=model,
         messages=messages,
     )
     return response
@@ -232,45 +248,42 @@ def cluster_summaries(
     config: ClusterConfig,
     k_means_clustering: pd.DataFrame,
     open_ai_client: OpenAIClientResource,
-) -> MaterializeResult:
+) -> pd.DataFrame:
     """
     OpenAI generated summaries for each cluster, and samples texts from each cluster.
     """
-
-    # CLUSTER SUMMARIES AND SAMPLES
     df = k_means_clustering
     n_clusters = config.n_clusters
-    sample_per_cluster = 10
-
-    summaries = ""
-    cluster_texts = ""
+    cluster_info = []
     client = open_ai_client.get_client()
-    prompt = "What do the following reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+? On theme, argumentation style, tone, etc.?\n\nReddit posts and comments:\n"
+    model = "gpt-3.5-turbo-1106"
+
+    summary_prompt = "What do the following reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+ issues? On theme, argumentation style, tone, etc.?\n\nReddit posts and comments:\n"
+    title_prompt = "Provide a concise title for the following Reddit posts and comments related to Mormonism and LGBTQ+ issues.\n\nReddit posts and comments:\n"
 
     for i in range(n_clusters):
-        cluster_df = df[df.cluster == i]
-        n_samples = min(sample_per_cluster, cluster_df.shape[0])
-        sample_cluster_rows = cluster_df.sample(n_samples, random_state=42)
-        texts = "\n".join(sample_cluster_rows.text.values)
+        sample_texts_df = df[(df.cluster == i) & (df.is_central_member)]
+        texts = "\n".join(sample_texts_df.text.values)
 
-        # Add the texts for previewing a sample from each cluster
-        cluster_texts += f"\n\nCluster {i} Samples: \n{texts}\n\n"
+        # Prepare the summary prompt for OpenAI and get the summary
+        summary_messages = [{"role": "system", "content": summary_prompt + texts}]
+        context.log.info(f"API Hit for Summary # {i}")
+        summary_response = open_ai_client.completions_with_backoff(
+            client, model, summary_messages
+        )
+        summary_content = summary_response.choices[0].message.content
 
-        # Get a summary of each cluster from openAI
-        messages = [{"role": "system", "content": prompt + texts}]
-        context.log.info(f"API Hit # {i}")
-        response = completions_with_backoff(client, messages)
-        content = response.choices[0].message.content
-        summaries += f"Cluster {i} Summary: \n{content}\n\n"
-        context.log.info(f"Cluster {i} Summary: \n{content}\n\n")
+        # Prepare the title prompt for OpenAI and get the title
+        title_messages = [{"role": "system", "content": title_prompt + texts}]
+        context.log.info(f"API Hit for Title # {i}")
+        title_response = open_ai_client.completions_with_backoff(
+            client, model, title_messages
+        )
+        title_content = title_response.choices[0].message.content
 
-    with open("data/all_summaries.txt", "w") as f:
-        f.write(summaries)
+        # Append the summary, title, and cluster ID to our list
+        cluster_info.append(
+            {"cluster": i, "summary": summary_content, "title": title_content}
+        )
 
-    # Attach the Markdown content as metadata to the asset
-    return MaterializeResult(
-        metadata={
-            "summaries": MetadataValue.md(summaries),
-            "samples": MetadataValue.md(cluster_texts),
-        }
-    )
+    return pd.DataFrame(cluster_info)
