@@ -71,6 +71,7 @@ def raw_reddit_data(
     }
 
     df2 = df[desired_columns[reddit_data_type]]
+    # TODO: use dbt to clean up schemas
     df2.rename(columns={"created_utc": "date"}, inplace=True)
     pd.to_datetime(df2["date"], unit="s")
     df2["subreddit"] = partition_subreddit
@@ -153,7 +154,7 @@ def topical_reddit_posts(database: Database) -> pd.DataFrame:
     metadata={
         "partition_expr": {"date": "TO_TIMESTAMP(date)", "subreddit": "subreddit"}
     },
-    deps=[raw_reddit_posts, raw_reddit_comments],
+    deps=[topical_reddit_posts, raw_reddit_comments],
 )
 def topical_reddit_comments(database: Database) -> pd.DataFrame:
     """

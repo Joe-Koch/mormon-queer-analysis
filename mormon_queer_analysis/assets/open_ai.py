@@ -5,9 +5,10 @@ from typing import Dict
 import backoff
 from dagster import (
     AssetExecutionContext,
+    AssetKey,
     Config,
-    MaterializeResult,
     MetadataValue,
+    SourceAsset,
     asset,
 )
 import matplotlib.pyplot as plt
@@ -34,6 +35,10 @@ class ClusterConfig(Config):
     metadata={
         "partition_expr": {"date": "TO_TIMESTAMP(date)", "subreddit": "subreddit"}
     },
+    deps=[
+        SourceAsset(key=AssetKey("topical_reddit_posts")),
+        SourceAsset(key=AssetKey("topical_reddit_comments")),
+    ],
 )
 def open_ai_embeddings(
     context: AssetExecutionContext,
@@ -95,9 +100,11 @@ def open_ai_embeddings(
     return df
 
 
-@asset
+@asset(deps=[open_ai_embeddings])
 def k_means_clustering(
-    config: ClusterConfig, open_ai_embeddings: pd.DataFrame
+    context: AssetExecutionContext,
+    config: ClusterConfig,
+    database: Database,
 ) -> pd.DataFrame:
     """
     Performs K-means clustering on OpenAI embeddings.
@@ -105,10 +112,18 @@ def k_means_clustering(
     Aggregates embeddings data from multiple partitions,
     converts them into a matrix, and applies K-means clustering algorithm based on the specified number
     of clusters in the configuration. Each row in the resultant DataFrame is labeled with its corresponding
-    cluster.
+    cluster. Marks observations that are closest to the cluster center to serve as sample texts. Makes a plot
+    of the t-SNE clusters.
     """
 
-    df = open_ai_embeddings
+    df = database.query(
+        f"""
+        SELECT
+            *
+        FROM
+            REDDIT.open_ai_embeddings
+    """
+    )
 
     # Format embeddings
     df["embedding"] = df["embedding"].apply(np.array)
@@ -122,6 +137,7 @@ def k_means_clustering(
     df["cluster"] = labels
 
     # Mark observations that are closest to the cluster center to serve as sample texts
+    n_samples = 10
     df["is_central_member"] = False
 
     for cluster_id in range(n_clusters):
@@ -134,44 +150,17 @@ def k_means_clustering(
         # Sort the DataFrame based on the distance
         sorted_cluster_df = cluster_df.sort_values("distance_to_center")
         # Select the top N texts or all texts if there are fewer than N
-        closest_texts = sorted_cluster_df.head(min(10, len(sorted_cluster_df)))
+        closest_texts = sorted_cluster_df.head(min(n_samples, len(sorted_cluster_df)))
         df.loc[closest_texts.index, "is_central_member"] = True
 
-    return df
-
-
-@asset
-def cluster_visualization(
-    config: ClusterConfig,
-    k_means_clustering: pd.DataFrame,
-) -> MaterializeResult:
-    """
-    Visualizes the clustering results obtained from K-means clustering of OpenAI embeddings.
-    This asset performs two main visualizations: a t-SNE plot to represent clusters in a
-    2D space and a time series plot showing the frequency of observations per cluster over time.
-    """
-
-    # CLUSTER VISUALIZATION
-    df = k_means_clustering
-
-    matrix = np.vstack(df.embedding.values)
-    n_clusters = config.n_clusters
-
-    df.groupby("cluster").score.mean().sort_values()
-
+    # Plot the t-SNE clusters
     tsne = TSNE(
         n_components=2, perplexity=15, random_state=42, init="random", learning_rate=200
     )
     vis_dims2 = tsne.fit_transform(matrix)
     x, y = zip(*vis_dims2)
-
-    # Create a colormap
-    colors = plt.cm.rainbow(np.linspace(0, 1, n_clusters))
-
+    colors = plt.cm.rainbow(np.linspace(0, 1, n_clusters))  # Create a colormap
     plt.figure(figsize=(15, 6))
-
-    # Plotting the t-SNE clusters
-    plt.subplot(1, 2, 1)
     for category, color in enumerate(colors):
         xs = np.array(x)[df.cluster == category]
         ys = np.array(y)[df.cluster == category]
@@ -179,56 +168,15 @@ def cluster_visualization(
         avg_x = xs.mean()
         avg_y = ys.mean()
         plt.scatter(avg_x, avg_y, marker="x", color=color, s=100)
-
     plt.title("Clusters identified visualized in language 2d using t-SNE")
-
-    # Plotting the time series
-
-    # selected_clusters = {
-    #     8: "Deleted Posts",
-    #     6: "Insults",
-    #     4: "Removed",
-    #     11: "need for acceptance",
-    #     14: "internal conflict",
-    #     34: "hopeful about progress",
-    #     37: "marriage",
-    # }
-
-    selected_clusters = {i: f"{i}" for i in range(20, 30)}
-
-    plt.subplot(1, 2, 2)
-    for category, label in selected_clusters.items():
-        cluster_data = df[df.cluster == category]
-        # Convert Reddit's Unix timestamp to datetime format.
-        cluster_data["date"] = pd.to_datetime(cluster_data["date"], unit="s")
-        # Set 'date' as the index
-        cluster_data.set_index("date", inplace=True)
-        # cluster_data = cluster_data.loc["2010-01-01":"2022-12-31"]
-        # Resample and count observations per month
-        yearly_data = cluster_data.resample("Y").size()
-        yearly_data.plot(kind="line", alpha=0.7, label=label)
-
-    plt.title("Frequency of Observations per Cluster Over Time")
-    plt.xlabel("Date")
-    plt.ylabel("Frequency")
-
-    plt.legend(loc="upper left", bbox_to_anchor=(1, 1))  # Place legend outside
-    plt.tight_layout(rect=[0, 0, 0.85, 1])
-
-    # Convert the image to a saveable format
+    # Convert the image to Markdown to preview it within Dagster
     buffer = BytesIO()
     plt.savefig(buffer, format="png")
     image_data = base64.b64encode(buffer.getvalue())
-
-    # Convert the image to Markdown to preview it within Dagster
     md_content = f"![img](data:image/png;base64,{image_data.decode()})"
+    context.add_output_metadata({"plot": MetadataValue.md(md_content)})
 
-    # Attach the Markdown content as metadata to the asset
-    return MaterializeResult(
-        metadata={
-            "plot": MetadataValue.md(md_content),
-        }
-    )
+    return df
 
 
 # TODO this should go into the openAI resource
@@ -268,17 +216,13 @@ def cluster_summaries(
         # Prepare the summary prompt for OpenAI and get the summary
         summary_messages = [{"role": "system", "content": summary_prompt + texts}]
         context.log.info(f"API Hit for Summary # {i}")
-        summary_response = open_ai_client.completions_with_backoff(
-            client, model, summary_messages
-        )
+        summary_response = completions_with_backoff(client, model, summary_messages)
         summary_content = summary_response.choices[0].message.content
 
         # Prepare the title prompt for OpenAI and get the title
         title_messages = [{"role": "system", "content": title_prompt + texts}]
         context.log.info(f"API Hit for Title # {i}")
-        title_response = open_ai_client.completions_with_backoff(
-            client, model, title_messages
-        )
+        title_response = completions_with_backoff(client, model, title_messages)
         title_content = title_response.choices[0].message.content
 
         # Append the summary, title, and cluster ID to our list

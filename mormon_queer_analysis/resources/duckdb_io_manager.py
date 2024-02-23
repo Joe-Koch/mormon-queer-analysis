@@ -12,4 +12,8 @@ class Database(ConfigurableResource):
 
     def query(self, body: str):
         with duckdb.connect(self.path) as conn:
-            return conn.query(body).to_df()
+            result = conn.query(body)
+            if result:
+                return result.to_df()
+            else:
+                return
