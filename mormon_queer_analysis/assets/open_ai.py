@@ -17,7 +17,7 @@ import pandas as pd
 from pydantic import Field
 from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
-import tiktoken
+from tiktoken import get_encoding
 
 from mormon_queer_analysis.partitions import monthly_partitions
 from mormon_queer_analysis.resources.duckdb_io_manager import Database
@@ -90,7 +90,7 @@ def open_ai_embeddings(
     embedding_model = "text-embedding-ada-002"
     embedding_encoding = "cl100k_base"  # this the encoding for text-embedding-ada-002
     max_tokens = 8000  # the maximum for text-embedding-ada-002 is 8191
-    encoding = tiktoken.get_encoding(embedding_encoding)
+    encoding = get_encoding(embedding_encoding)
 
     # Omit input texts that are too long to embed
     df["n_tokens"] = df.text.apply(lambda x: len(encoding.encode(x)))
