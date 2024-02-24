@@ -215,23 +215,20 @@ def cluster_summaries(
         sample_texts_df = df[(df.cluster == i) & (df.is_central_member)]
         texts = "\n".join(sample_texts_df.text.values)
 
-        # Prepare the summary prompt for OpenAI and get the summary
-        summary_messages = [{"role": "system", "content": summary_prompt + texts}]
-        context.log.info(f"API Hit for Summary # {i}")
+        context.log.info(f"Hitting API for Summary # {i}")
         summary_response = open_ai_client.completions_with_backoff(
-            model, summary_messages
+            model, summary_prompt, texts
         )
-        summary_content = summary_response.choices[0].message.content
 
         # Prepare the title prompt for OpenAI and get the title
-        title_messages = [{"role": "system", "content": title_prompt + texts}]
-        context.log.info(f"API Hit for Title # {i}")
-        title_response = open_ai_client.completions_with_backoff(model, title_messages)
-        title_content = title_response.choices[0].message.content
+        context.log.info(f"Hitting API for Title # {i}")
+        title_response = open_ai_client.completions_with_backoff(
+            model, title_prompt, texts
+        )
 
         # Append the summary, title, and cluster ID to our list
         cluster_info.append(
-            {"cluster": i, "summary": summary_content, "title": title_content}
+            {"cluster": i, "summary": summary_response, "title": title_response}
         )
 
     return pd.DataFrame(cluster_info)

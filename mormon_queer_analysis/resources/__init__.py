@@ -7,7 +7,10 @@ from mormon_queer_analysis.resources.duckdb_io_manager import (
     Database,
     database_io_manager,
 )
-from mormon_queer_analysis.resources.open_client import OpenAIClientResource
+from mormon_queer_analysis.resources.open_client import (
+    OpenAIClientResource,
+    OpenAISubsampleClientResource,
+)
 
 
 FILTER_KEYWORDS = resources.read_text(
@@ -33,7 +36,9 @@ RESOURCES_LOCAL = {
             "end_date": EnvVar("END_DATE"),
         }  # Use a smaller subset of time
     ),
-    "open_ai_client": OpenAIClientResource(openai_api_key=EnvVar("OPENAI_API_KEY")),
+    "open_ai_client": OpenAISubsampleClientResource(
+        openai_api_key=EnvVar("OPENAI_API_KEY")
+    ),  # Reduce costs by subsampling how much data you send to the API
 }
 
 
