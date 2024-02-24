@@ -209,7 +209,7 @@ def cluster_summaries(
     model = "gpt-3.5-turbo-1106"
 
     summary_prompt = "What do the following reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+ issues? On theme, argumentation style, tone, etc.?\n\nReddit posts and comments:\n"
-    title_prompt = "Provide a concise title for the following Reddit posts and comments related to Mormonism and LGBTQ+ issues.\n\nReddit posts and comments:\n"
+    title_prompt = "Provide a concise, few word title for the following Reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+ issues. \n\nReddit posts and comments:\n"
 
     for i in range(n_clusters):
         sample_texts_df = df[(df.cluster == i) & (df.is_central_member)]
