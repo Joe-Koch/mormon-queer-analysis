@@ -1,3 +1,5 @@
+from importlib import resources
+
 from dagster import EnvVar, FilesystemIOManager, resource
 
 from mormon_queer_analysis.partitions import reddit_partitions_def
@@ -8,8 +10,9 @@ from mormon_queer_analysis.resources.duckdb_io_manager import (
 from mormon_queer_analysis.resources.open_client import OpenAIClientResource
 
 
-with open("mormon_queer_analysis/resources/filter_keywords.txt", "r") as file:
-    FILTER_KEYWORDS = [line.strip() for line in file.readlines()]
+FILTER_KEYWORDS = resources.read_text(
+    "mormon_queer_analysis.resources", "filter_keywords.txt"
+).splitlines()
 
 
 @resource({"start_date": str, "end_date": str})

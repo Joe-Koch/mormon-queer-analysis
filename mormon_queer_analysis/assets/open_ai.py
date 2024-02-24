@@ -3,7 +3,6 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from io import BytesIO
 
-import backoff
 from dagster import (
     AssetExecutionContext,
     AssetKey,
@@ -14,7 +13,6 @@ from dagster import (
 )
 import matplotlib.pyplot as plt
 import numpy as np
-from openai import RateLimitError
 import pandas as pd
 from pydantic import Field
 from sklearn.cluster import KMeans
@@ -24,7 +22,6 @@ import tiktoken
 from mormon_queer_analysis.partitions import monthly_partitions
 from mormon_queer_analysis.resources.duckdb_io_manager import Database
 from mormon_queer_analysis.resources.open_client import OpenAIClientResource
-from mormon_queer_analysis.utils.embeddings_utils import get_embedding
 
 
 class ClusterConfig(Config):
@@ -84,13 +81,10 @@ def open_ai_embeddings(
                 TO_TIMESTAMP(date) < '{end_date} 00:00:00'
         )
         """
-    context.log.info(query)
+
     df = database.query(query)
     if df is None or df.empty:
         return
-
-    context.log.info(df.head())
-    context.log.info(f"dataframe length is {df.shape[0]}")
 
     # embedding model parameters
     embedding_model = "text-embedding-ada-002"
@@ -111,9 +105,8 @@ def open_ai_embeddings(
     )
 
     # OpenAI docs say this may take a few minutes
-    client = open_ai_client.get_client()
     df["embedding"] = df.text.apply(
-        lambda x: get_embedding(client, x, model=embedding_model)
+        lambda x: open_ai_client.get_model_embedding(x, model=embedding_model)
     )
     context.log.info(f"Hit OpenAI client")
     df["embedding"] = df["embedding"].apply(np.array)
@@ -200,17 +193,6 @@ def k_means_clustering(
     return df
 
 
-# TODO this should go into the openAI resource
-@backoff.on_exception(backoff.expo, RateLimitError)
-def completions_with_backoff(client, model, messages):
-    """Use OpenAI's chat completions API, but back off if it gets a rate limit error"""
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-    )
-    return response
-
-
 @asset
 def cluster_summaries(
     context: AssetExecutionContext,
@@ -224,7 +206,6 @@ def cluster_summaries(
     df = k_means_clustering
     n_clusters = config.n_clusters
     cluster_info = []
-    client = open_ai_client.get_client()
     model = "gpt-3.5-turbo-1106"
 
     summary_prompt = "What do the following reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+ issues? On theme, argumentation style, tone, etc.?\n\nReddit posts and comments:\n"
@@ -237,13 +218,15 @@ def cluster_summaries(
         # Prepare the summary prompt for OpenAI and get the summary
         summary_messages = [{"role": "system", "content": summary_prompt + texts}]
         context.log.info(f"API Hit for Summary # {i}")
-        summary_response = completions_with_backoff(client, model, summary_messages)
+        summary_response = open_ai_client.completions_with_backoff(
+            model, summary_messages
+        )
         summary_content = summary_response.choices[0].message.content
 
         # Prepare the title prompt for OpenAI and get the title
         title_messages = [{"role": "system", "content": title_prompt + texts}]
         context.log.info(f"API Hit for Title # {i}")
-        title_response = completions_with_backoff(client, model, title_messages)
+        title_response = open_ai_client.completions_with_backoff(model, title_messages)
         title_content = title_response.choices[0].message.content
 
         # Append the summary, title, and cluster ID to our list
