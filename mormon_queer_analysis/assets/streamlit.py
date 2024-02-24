@@ -41,5 +41,5 @@ def streamlit_db(
             reddit.cluster_summaries;
     """
 
-    database.execute(sql_query)
+    database.query(sql_query)
     return
