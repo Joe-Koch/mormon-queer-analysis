@@ -1,6 +1,7 @@
 import base64
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from io import BytesIO
-from typing import Dict
 
 import backoff
 from dagster import (
@@ -20,7 +21,7 @@ from sklearn.cluster import KMeans
 from sklearn.manifold import TSNE
 import tiktoken
 
-from mormon_queer_analysis.partitions import reddit_partitions
+from mormon_queer_analysis.partitions import monthly_partitions
 from mormon_queer_analysis.resources.duckdb_io_manager import Database
 from mormon_queer_analysis.resources.open_client import OpenAIClientResource
 from mormon_queer_analysis.utils.embeddings_utils import get_embedding
@@ -31,10 +32,8 @@ class ClusterConfig(Config):
 
 
 @asset(
-    partitions_def=reddit_partitions,
-    metadata={
-        "partition_expr": {"date": "TO_TIMESTAMP(date)", "subreddit": "subreddit"}
-    },
+    partitions_def=monthly_partitions,
+    metadata={"partition_expr": "TO_TIMESTAMP(date)"},
     deps=[
         SourceAsset(key=AssetKey("topical_reddit_posts")),
         SourceAsset(key=AssetKey("topical_reddit_comments")),
@@ -51,25 +50,47 @@ def open_ai_embeddings(
     and applies the embedding model to the remaining content.
     """
 
-    df = database.query(
-        f"""
-        SELECT
-            date,
-            score,
-            text,
-            subreddit
-        FROM
-            REDDIT.topical_reddit_posts
+    start_date = context.partition_key
+    end_date = (
+        datetime.strptime(start_date, "%Y-%m-%d") + relativedelta(months=1)
+    ).strftime("%Y-%m-%d")
+
+    query = f"""
+        (
+            SELECT
+                date,
+                score,
+                text,
+                subreddit
+            FROM
+                REDDIT.topical_reddit_posts
+            WHERE
+                TO_TIMESTAMP(date) >= '{start_date} 00:00:00'
+                AND
+                TO_TIMESTAMP(date) < '{end_date} 00:00:00'
+        )
         UNION ALL
-        SELECT
-            date,
-            score,
-            text,
-            subreddit
-        FROM
-            REDDIT.topical_reddit_comments
-    """
-    )
+        (
+            SELECT
+                date,
+                score,
+                text,
+                subreddit
+            FROM
+                REDDIT.topical_reddit_comments
+            WHERE
+                TO_TIMESTAMP(date) >= '{start_date} 00:00:00'
+                AND
+                TO_TIMESTAMP(date) < '{end_date} 00:00:00'
+        )
+        """
+    context.log.info(query)
+    df = database.query(query)
+    if df is None or df.empty:
+        return
+
+    context.log.info(df.head())
+    context.log.info(f"dataframe length is {df.shape[0]}")
 
     # embedding model parameters
     embedding_model = "text-embedding-ada-002"
@@ -83,19 +104,19 @@ def open_ai_embeddings(
     df = df[df.n_tokens <= max_tokens]
     final_row_count = len(df)
     rows_dropped = initial_row_count - final_row_count
+    context.add_output_metadata(
+        metadata={
+            "rows_dropped": MetadataValue.int(rows_dropped),
+        }
+    )
 
     # OpenAI docs say this may take a few minutes
     client = open_ai_client.get_client()
     df["embedding"] = df.text.apply(
         lambda x: get_embedding(client, x, model=embedding_model)
     )
+    context.log.info(f"Hit OpenAI client")
     df["embedding"] = df["embedding"].apply(np.array)
-
-    context.add_output_metadata(
-        metadata={
-            "rows_dropped": MetadataValue.int(rows_dropped),
-        }
-    )
 
     return df
 

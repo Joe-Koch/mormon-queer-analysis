@@ -26,9 +26,9 @@ RESOURCES_LOCAL = {
     ),
     "reddit_partitions": reddit_partitions_resource.configured(
         {
-            "start_date": "2023-01-01",
-            "end_date": "2023-03-01",
-        }  # Use a small subset of time
+            "start_date": EnvVar("START_DATE"),
+            "end_date": EnvVar("END_DATE"),
+        }  # Use a smaller subset of time
     ),
     "open_ai_client": OpenAIClientResource(openai_api_key=EnvVar("OPENAI_API_KEY")),
 }
@@ -38,7 +38,10 @@ RESOURCES_PRODUCTION = {
     "io_manager": database_io_manager,
     "database": Database(path="database/dagster.duckdb"),
     "reddit_partitions": reddit_partitions_resource.configured(
-        {"start_date": "2005-06-01", "end_date": "2023-03-01"}
+        {
+            "start_date": EnvVar("START_DATE"),
+            "end_date": EnvVar("END_DATE"),
+        }
     ),
     "open_ai_client": OpenAIClientResource(openai_api_key=EnvVar("OPENAI_API_KEY")),
 }

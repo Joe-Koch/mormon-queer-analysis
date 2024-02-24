@@ -116,10 +116,6 @@ def raw_reddit_comments(context: AssetExecutionContext) -> pd.DataFrame:
 
 
 @asset(
-    partitions_def=reddit_partitions,
-    metadata={
-        "partition_expr": {"date": "TO_TIMESTAMP(date)", "subreddit": "subreddit"}
-    },
     deps=[raw_reddit_posts],
 )
 def topical_reddit_posts(database: Database) -> pd.DataFrame:
@@ -150,10 +146,6 @@ def topical_reddit_posts(database: Database) -> pd.DataFrame:
 
 
 @asset(
-    partitions_def=reddit_partitions,
-    metadata={
-        "partition_expr": {"date": "TO_TIMESTAMP(date)", "subreddit": "subreddit"}
-    },
     deps=[topical_reddit_posts, raw_reddit_comments],
 )
 def topical_reddit_comments(database: Database) -> pd.DataFrame:
