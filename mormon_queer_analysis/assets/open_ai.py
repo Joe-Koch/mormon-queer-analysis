@@ -1,5 +1,5 @@
 import base64
-from datetime import datetime, timedelta
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
 from io import BytesIO
 
@@ -32,8 +32,7 @@ class ClusterConfig(Config):
     partitions_def=monthly_partitions,
     metadata={"partition_expr": "TO_TIMESTAMP(date)"},
     deps=[
-        SourceAsset(key=AssetKey("topical_reddit_posts")),
-        SourceAsset(key=AssetKey("topical_reddit_comments")),
+        SourceAsset(key=AssetKey("topical_reddit_posts_and_comments")),
     ],
 )
 def open_ai_embeddings(
@@ -53,33 +52,17 @@ def open_ai_embeddings(
     ).strftime("%Y-%m-%d")
 
     query = f"""
-        (
-            SELECT
-                date,
-                score,
-                text,
-                subreddit
-            FROM
-                REDDIT.topical_reddit_posts
-            WHERE
-                TO_TIMESTAMP(date) >= '{start_date} 00:00:00'
-                AND
-                TO_TIMESTAMP(date) < '{end_date} 00:00:00'
-        )
-        UNION ALL
-        (
-            SELECT
-                date,
-                score,
-                text,
-                subreddit
-            FROM
-                REDDIT.topical_reddit_comments
-            WHERE
-                TO_TIMESTAMP(date) >= '{start_date} 00:00:00'
-                AND
-                TO_TIMESTAMP(date) < '{end_date} 00:00:00'
-        )
+        SELECT
+            date,
+            score,
+            text,
+            subreddit
+        FROM
+            REDDIT.topical_reddit_posts_and_comments
+        WHERE
+            TO_TIMESTAMP(date) >= '{start_date} 00:00:00'
+            AND
+            TO_TIMESTAMP(date) < '{end_date} 00:00:00'
         """
 
     df = database.query(query)
@@ -209,11 +192,14 @@ def cluster_summaries(
     model = "gpt-3.5-turbo-1106"
 
     summary_prompt = "What do the following reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+ issues? On theme, argumentation style, tone, etc.?\n\nReddit posts and comments:\n"
-    title_prompt = "Provide a concise, few word title for the following Reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+ issues. \n\nReddit posts and comments:\n"
+    title_prompt = "Provide a concise, few word title for what the following Reddit posts and comments have in common, beyond being related to Mormonism and LGBTQ+ issues. \n\nReddit posts and comments:\n"
 
     for i in range(n_clusters):
         sample_texts_df = df[(df.cluster == i) & (df.is_central_member)]
-        texts = "\n".join(sample_texts_df.text.values)
+        char_limit_per_text = 3000
+        texts = "\n".join(
+            text[:char_limit_per_text] for text in sample_texts_df.text.values
+        )
 
         context.log.info(f"Hitting API for Summary # {i}")
         summary_response = open_ai_client.completions_with_backoff(

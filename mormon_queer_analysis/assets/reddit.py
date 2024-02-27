@@ -116,41 +116,11 @@ def raw_reddit_comments(context: AssetExecutionContext) -> pd.DataFrame:
 
 
 @asset(
-    deps=[raw_reddit_posts],
+    deps=[raw_reddit_posts, raw_reddit_comments],
 )
-def topical_reddit_posts(database: Database) -> pd.DataFrame:
+def topical_reddit_posts_and_comments(database: Database) -> pd.DataFrame:
     """
-    Filters reddit posts to ones related to the topic, based on if they
-    contain relevant keywords. Formats data to keep only necessary
-    columns, and renames them to be less reddit-specific.
-    """
-
-    keywords_condition = " OR ".join(
-        [f"LOWER(text) LIKE '%{keyword.lower()}%'" for keyword in FILTER_KEYWORDS]
-    )
-    filtered_df = database.query(
-        f"""
-        SELECT
-            date,
-            score,
-            title || '\n' || selftext as text,
-            subreddit,
-            name
-        FROM
-            REDDIT.raw_reddit_posts
-        WHERE {keywords_condition}
-    """
-    )
-
-    return filtered_df
-
-
-@asset(
-    deps=[topical_reddit_posts, raw_reddit_comments],
-)
-def topical_reddit_comments(database: Database) -> pd.DataFrame:
-    """
-    Filters reddit comments to ones related to the topic, based on if
+    Filters reddit posts and comments to ones related to the topic, based on if
     they contain relevant keywords or were commented on relevant posts.
     Formats data to keep only necessary columns, and renames them to be
     less reddit-specific.
@@ -159,20 +129,44 @@ def topical_reddit_comments(database: Database) -> pd.DataFrame:
     keywords_condition = " OR ".join(
         [f"LOWER(text) LIKE '%{keyword.lower()}%'" for keyword in FILTER_KEYWORDS]
     )
-    # Filter comments based on if they contain related keywords, or they were commented on a post with related keywords
+    # Filter posts based on if they contain related keywords, and comments based on if they contain related keywords, or they were commented on a post with related keywords
     filtered_df = database.query(
         f"""
+        WITH topical_reddit_posts AS (
+            SELECT
+                date,
+                score,
+                title || '\n' || selftext AS text,
+                subreddit,
+                name
+            FROM
+                REDDIT.raw_reddit_posts
+            WHERE
+                {keywords_condition}
+        )
+
         SELECT
-            date,
-            score,
-            body as text,
-            subreddit
+            c.date,
+            c.score,
+            c.body AS text,
+            c.subreddit
         FROM
-            REDDIT.raw_reddit_comments
-        WHERE 
-            link_id IN (SELECT name FROM REDDIT.topical_reddit_posts)
+            REDDIT.raw_reddit_comments c
+        WHERE
+            c.link_id IN (SELECT name FROM topical_reddit_posts)
             OR
             {keywords_condition}
+
+        UNION ALL
+
+        SELECT
+            p.date,
+            p.score,
+            p.text,
+            p.subreddit
+        FROM
+            topical_reddit_posts p
+
     """
     )
 
