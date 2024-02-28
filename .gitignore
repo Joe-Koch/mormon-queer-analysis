@@ -164,9 +164,10 @@ cython_debug/
 dagster_home
 data
 
-# DuckDB database
-database/dagster.DuckDB
-dagster.duckdb.wal
+# DuckDB databases
+*.duckdb 
+# Except for streamlit.duckdb
+!streamlit.duckdb
 
 # Scraps
 scraps
