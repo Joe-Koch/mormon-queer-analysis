@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: reddit
+    tables:
+      - name: raw_reddit_posts
+        meta:
+          dagster:
+            asset_key: ["raw_reddit_posts"]
+      - name: raw_reddit_comments
+        meta:
+          dagster:
+            asset_key: ["raw_reddit_comments"]

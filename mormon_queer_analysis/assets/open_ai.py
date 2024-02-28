@@ -58,7 +58,7 @@ def open_ai_embeddings(
             text,
             subreddit
         FROM
-            REDDIT.topical_reddit_posts_and_comments
+            dagster.topical_reddit_posts_and_comments
         WHERE
             TO_TIMESTAMP(date) >= '{start_date} 00:00:00'
             AND

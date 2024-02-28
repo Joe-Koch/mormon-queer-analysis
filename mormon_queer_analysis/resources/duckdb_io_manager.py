@@ -1,10 +1,5 @@
 from dagster import ConfigurableResource
-from dagster_duckdb_pandas import DuckDBPandasIOManager
 import duckdb
-
-database_io_manager = DuckDBPandasIOManager(
-    database="database/dagster.duckdb", schema="REDDIT"
-)
 
 
 class Database(ConfigurableResource):

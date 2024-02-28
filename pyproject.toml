@@ -26,6 +26,8 @@ backoff = "^2.2.1"
 notebook = "^7.1.0"
 dagster-duckdb = "^0.22.5"
 dagster-duckdb-pandas = "^0.22.5"
+dagster-dbt = "^0.22.6"
+dbt-duckdb = "^1.7.2"
 
 [tool.poetry.group.dev.dependencies]
 black = "*"

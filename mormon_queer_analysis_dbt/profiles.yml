@@ -1,0 +1,13 @@
+mormon_queer_analysis_dbt:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: local_dagster.duckdb
+      threads: 24
+  target: production
+  outputs:
+    production:
+      type: duckdb
+      path: dagster.duckdb
+      threads: 24

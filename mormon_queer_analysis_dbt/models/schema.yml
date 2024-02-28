@@ -1,0 +1,32 @@
+version: 2
+
+models:
+  - name: topical_reddit_posts_and_comments
+    description: "Filtered reddit posts and comments to ones related to the topic, based on if
+    they contain relevant keywords or were commented on relevant posts. Only keeps columns 
+    required for analysis, and uses less reddit-specific column names."
+    columns:
+      - name: date
+        description: "The creation date of the Reddit post/comment."
+        data_type: date
+        tests:
+          - not_null
+      - name: score
+        description: "The score of the Reddit post/comment."
+        data_type: integer
+        tests:
+          - not_null
+      - name: text
+        description: "The body text of the Reddit post/comment."
+        data_type: string
+        tests:
+          - not_null
+      - name: subreddit
+        description: "The subreddit where the post/comment was posted."
+        data_type: string
+        tests:
+          - not_null
+    config:
+      meta:
+        dagster:
+          group: Reddit
