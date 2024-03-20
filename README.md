@@ -17,8 +17,9 @@ A personal project where I tested out some new tools like Dagster and DuckDB.
 
 ## Results
 
-<iframe src="https://lds-lgbt-app-algl4vdm3jedzrnpc3alh9.streamlit.app/" width="700" height="400"></iframe>
-If the streamlit app has gone stale, you can refresh it [here](https://lds-lgbt-app-algl4vdm3jedzrnpc3alh9.streamlit.app/). 
+![frequency-plot](images/cluster-frequency-plot.png "Frequency Plot")
+
+You can intereact with the streamlit website [here](https://lds-lgbt-app-algl4vdm3jedzrnpc3alh9.streamlit.app/). Clicking on a cluster will show the summary and some sample reddit comments from the cluster.
 
 
 ### Interesting findings:
@@ -87,7 +88,7 @@ By default, it will load for the local deployment. You can toggle deployments by
 This project uses OpenAI's API to create text embeddings of the reddit posts and comments, then scikit-learn for K-means clustering, then OpenAI's text generation to produce summaries and titles for each of the clusters. Many of the clusters were vaguely titled, redundant, or irrelevant (like meta-commentary complaining about Reddit), so I omitted those from the final visualization. 
 
 The elbow method for finding the optimal K for K-means clustering wasn't very clear, at least partially because reddit threads and (human conversations in general) don't inherently have tight clusters. I ended up choosing 32 clusters for the final result. 
-![Alt text for the image](images/k-means-elbow.png "Optional title")
+![K-Means Elbow](images/k-means-elbow.png "K-Means Elbow")
 
 [OpenAI models](https://platform.openai.com/docs/models/overview) were chosen to get the best accuracy for the task, with minimizing cost being the top priority. 
 
