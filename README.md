@@ -15,6 +15,16 @@ A personal project where I tested out some new tools like Dagster and DuckDB.
 - [Streamlit](https://streamlit.io/): creating and hosting (for free!) an interactive data visualization 
 - [Arctic Shift API](https://github.com/ArthurHeitmann/arctic_shift/tree/master/api): source of historic reddit data. No money went towards buying Reddit data in this project.
 
+## Overview 
+
+ This project uses Dagster to create a pipeline that:
+  - Pulls all available historic data from LDS-related subreddits from a data dump API
+  - Narrows the posts and comments down to the ones related to LGBT+ issues
+  - Puts those through OpenAI's API to get text embeddings
+  - Does K-means clustering on those embeddings
+  - Uses OpenAI chat API to summarize each cluster 
+  - Creates an interactive streamlit app to see cluster frequencies over time 
+
 ## Results
 
 ![frequency-plot](images/cluster-frequency-plot.png "Frequency Plot")
